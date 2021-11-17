@@ -8,13 +8,17 @@
 
 import Foundation
 
+public enum HeaderKey: String {
+    case WSProtocolName = "Sec-WebSocket-Protocol"
+}
+
 public protocol EngineDelegate: AnyObject {
     func didReceive(event: WebSocketEvent)
 }
 
 public protocol Engine {
     func register(delegate: EngineDelegate)
-    func start(request: URLRequest)
+    func start(url: URL)
     func stop(closeCode: UInt16)
     func forceStop()
     func write(data: Data, opcode: FrameOpCode, completion: (() -> ())?)

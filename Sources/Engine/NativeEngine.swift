@@ -10,23 +10,37 @@ import Foundation
 
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public class NativeEngine: NSObject, Engine, URLSessionDataDelegate, URLSessionWebSocketDelegate {
-    private var task: URLSessionWebSocketTask?
+    private var task: URLSessionWebSocketTask!
+    private var requestProtocol: String?
+    
     weak var delegate: EngineDelegate?
+    
+    public init(protocol requestProtocol: String?) {
+        self.requestProtocol = requestProtocol
+    }
 
     public func register(delegate: EngineDelegate) {
         self.delegate = delegate
     }
 
-    public func start(request: URLRequest) {
+    public func start(url: URL) {
+        let request: URLRequest = {
+            var req = URLRequest(url: url)
+            if let protoc = self.requestProtocol {
+                req.addValue(protoc, forHTTPHeaderField: HeaderKey.WSProtocolName.rawValue)
+            }
+            return req
+        }()
         let session = URLSession(configuration: URLSessionConfiguration.default, delegate: self, delegateQueue: nil)
+        
         task = session.webSocketTask(with: request)
         doRead()
-        task?.resume()
+        task.resume()
     }
 
     public func stop(closeCode: UInt16) {
         let closeCode = URLSessionWebSocketTask.CloseCode(rawValue: Int(closeCode)) ?? .normalClosure
-        task?.cancel(with: closeCode, reason: nil)
+        task.cancel(with: closeCode, reason: nil)
     }
 
     public func forceStop() {
@@ -34,7 +48,7 @@ public class NativeEngine: NSObject, Engine, URLSessionDataDelegate, URLSessionW
     }
 
     public func write(string: String, completion: (() -> ())?) {
-        task?.send(.string(string), completionHandler: { (error) in
+        task.send(.string(string), completionHandler: { (error) in
             completion?()
         })
     }
@@ -42,14 +56,14 @@ public class NativeEngine: NSObject, Engine, URLSessionDataDelegate, URLSessionW
     public func write(data: Data, opcode: FrameOpCode, completion: (() -> ())?) {
         switch opcode {
         case .binaryFrame:
-            task?.send(.data(data), completionHandler: { (error) in
+            task.send(.data(data), completionHandler: { (error) in
                 completion?()
             })
         case .textFrame:
             let text = String(data: data, encoding: .utf8)!
             write(string: text, completion: completion)
         case .ping:
-            task?.sendPing(pongReceiveHandler: { (error) in
+            task.sendPing(pongReceiveHandler: { (error) in
                 completion?()
             })
         default:
@@ -58,7 +72,7 @@ public class NativeEngine: NSObject, Engine, URLSessionDataDelegate, URLSessionW
     }
 
     private func doRead() {
-        task?.receive { [weak self] (result) in
+        task.receive { [weak self] (result) in
             switch result {
             case .success(let message):
                 switch message {

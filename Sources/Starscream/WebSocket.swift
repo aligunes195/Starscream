@@ -96,7 +96,7 @@ open class WebSocket: WebSocketClient, EngineDelegate {
     public weak var delegate: WebSocketDelegate?
     public var onEvent: ((WebSocketEvent) -> Void)?
     
-    public var request: URLRequest
+    public var url: URL
     // Where the callback is executed. It defaults to the main UI thread queue.
     public var callbackQueue = DispatchQueue.main
     public var respondToPingWithPong: Bool {
@@ -110,24 +110,32 @@ open class WebSocket: WebSocketClient, EngineDelegate {
         }
     }
     
-    public init(request: URLRequest, engine: Engine) {
-        self.request = request
+    public init(url: URL, engine: Engine) {
+        self.url = url
         self.engine = engine
     }
     
-    public convenience init(request: URLRequest, certPinner: CertificatePinning? = FoundationSecurity(), compressionHandler: CompressionHandler? = nil, useCustomEngine: Bool = true) {
+    public convenience init(url: URL, requestProtocol: String? = nil, certPinner: CertificatePinning? = FoundationSecurity(), compressionHandler: CompressionHandler? = nil, useCustomEngine: Bool = true) {
         if #available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *), !useCustomEngine {
-            self.init(request: request, engine: NativeEngine())
-        } else if #available(macOS 10.14, iOS 12.0, watchOS 5.0, tvOS 12.0, *) {
-            self.init(request: request, engine: WSEngine(transport: TCPTransport(), certPinner: certPinner, compressionHandler: compressionHandler))
-        } else {
-            self.init(request: request, engine: WSEngine(transport: FoundationTransport(), certPinner: certPinner, compressionHandler: compressionHandler))
+            self.init(url: url, engine: NativeEngine(protocol: requestProtocol))
+            return
         }
+        
+        let transport: Transport
+        if #available(macOS 10.14, iOS 12.0, watchOS 5.0, tvOS 12.0, *) {
+            transport = TCPTransport()
+        } else {
+            transport = FoundationTransport()
+        }
+        self.init(url: url, engine: WSEngine(protocol: requestProtocol,
+                                             transport: transport,
+                                             certPinner: certPinner,
+                                             compressionHandler: compressionHandler))
     }
     
     public func connect() {
         engine.register(delegate: self)
-        engine.start(request: request)
+        engine.start(url: url)
     }
     
     public func disconnect(closeCode: UInt16 = CloseCode.normal.rawValue) {

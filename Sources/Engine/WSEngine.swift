@@ -17,6 +17,7 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
     private let certPinner: CertificatePinning?
     private let headerChecker: HeaderValidator
     private var request: URLRequest!
+    private var requestProtocol: String?
     
     private let frameHandler = FrameCollector()
     private var didUpgrade = false
@@ -28,12 +29,14 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
     weak var delegate: EngineDelegate?
     public var respondToPingWithPong: Bool = true
     
-    public init(transport: Transport,
+    public init(protocol requestProtocol: String?,
+                transport: Transport,
                 certPinner: CertificatePinning? = nil,
                 headerValidator: HeaderValidator = FoundationSecurity(),
                 httpHandler: HTTPHandler = FoundationHTTPHandler(),
                 framer: Framer = WSFramer(),
                 compressionHandler: CompressionHandler? = nil) {
+        self.requestProtocol = requestProtocol
         self.transport = transport
         self.framer = framer
         self.httpHandler = httpHandler
@@ -48,7 +51,7 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
         self.delegate = delegate
     }
     
-    public func start(request: URLRequest) {
+    public func start(url: URL) {
         mutex.wait()
         let isConnected = canSend
         mutex.signal()
@@ -56,14 +59,17 @@ FrameCollectorDelegate, HTTPHandlerDelegate {
             return
         }
         
-        self.request = request
+        self.request = {
+            var req = URLRequest(url: url)
+            if let protoc = self.requestProtocol {
+                req.addValue(protoc, forHTTPHeaderField: HeaderKey.WSProtocolName.rawValue)
+            }
+            return req
+        }()
         transport.register(delegate: self)
         framer.register(delegate: self)
         httpHandler.register(delegate: self)
         frameHandler.delegate = self
-        guard let url = request.url else {
-            return
-        }
         transport.connect(url: url, timeout: request.timeoutInterval, certificatePinning: certPinner)
     }
     
